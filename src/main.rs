@@ -1,17 +1,24 @@
 extern crate crabler;
-extern crate futures;
-extern crate tokio;
+extern crate hyper;
 use crabler::*;
 use std::path::Path;
 
 use futures::future::Future;
 use futures::sink::Sink;
 use futures::stream::Stream;
-use futures::sync::mpsc;
 use std::io::stdin;
 use std::thread;
 use websocket::result::WebSocketError;
 use websocket::{ClientBuilder, OwnedMessage};
+use actix_web::HttpRequest;
+use hyper::{body::HttpBody as _, Client, Uri};
+use std::str::FromStr;
+use tokio;
+use std::str;
+use encoding::all::GB18030;
+use encoding::{Encoding, DecoderTrap};
+use encoding::types::EncoderTrap;
+use html5ever::tendril::fmt::Slice;
 
 #[derive(WebScraper)]
 #[on_response(response_handler)]
@@ -67,23 +74,44 @@ const CONNECTION: &'static str = "http://www.webxml.com.cn/WebServices/ChinaStoc
 
 // Async websocket chat client
 #[tokio::main]
-async fn main() {
-    let scraper = Scraper {};
+async fn main(){
+    let client = hyper::Client::new();
+    let url: Uri = Uri::from_static("http://hq.sinajs.cn/list=sh601016,sz000966,sh600526,sz002554");
+
+    let resp = match(client.get(url).await) {
+        Ok(res) => {
+            res
+        }
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
+    };
+    let buf = hyper::body::to_bytes(resp).await.unwrap();
+
+    unsafe {
+        let mut result = GB18030.decode(str::from_utf8_unchecked(buf.as_bytes()).as_ref(), DecoderTrap::Replace).unwrap();
+        result.split(";\n").for_each(|r|  {
+            println!("{:?}", r);
+        });
+        println!("body: {:?}", result);
+    }
+    //let scraper = Scraper {};
 
     // Run scraper starting from given url and using 20 worker threads
-    scraper.run(Opts::new().with_urls(vec!["https://www.eastmoney.com/"]).with_threads(20)).await;
+   // scraper.run(Opts::new().with_urls(vec!["https://www.eastmoney.com/"]).with_threads(20)).await;
 
-    println!("Connecting to {}", CONNECTION);
+    //println!("Connecting to {}", CONNECTION);
 
     // Construct new Tokio runtime environment
 
 
-    let (usr_msg, stdin_ch) = mpsc::channel(0);
+    //let (usr_msg, stdin_ch) = mpsc::channel(0);
 
     // Spawn new thread to read user input
     // stdin isn't supported in mio yet, so we use a thread
     // see https://github.com/carllerche/mio/issues/321
-    thread::spawn(|| {
+    /*thread::spawn(|| {
         let mut input = String::new();
         let mut stdin_sink = usr_msg.wait();
         loop {
@@ -108,10 +136,10 @@ async fn main() {
                 break;
             }
         }
-    });
+    });*/
 
     // Construct a new connection to the websocket server
-    let runner = ClientBuilder::new(CONNECTION)
+    /*let runner = ClientBuilder::new(CONNECTION)
         .unwrap()
         .add_protocol("rust-websocket")
         .async_connect_insecure()
@@ -133,7 +161,7 @@ async fn main() {
                 .forward(sink)
         });
     // Start our websocket client runner in the Tokio environment
-    runner.wait();
+    runner.wait();*/
 }
 
 async fn fetch_path(path:String) -> surf::Result<String>{
